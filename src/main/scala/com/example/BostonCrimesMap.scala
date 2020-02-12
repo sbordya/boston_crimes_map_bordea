@@ -22,14 +22,15 @@ object BostonCrimesMap extends App {
   val crimesSchema = Encoders.product[Crime].schema
   val offenseCodeSchema = Encoders.product[OffenseCode].schema
 
-  val crimes = spark.read.option("header", "true").schema(crimesSchema).csv(s"$crimesPath").as[Crime]
-  val offenseCodes = spark.read.option("header", "true").schema(offenseCodeSchema).csv(s"$offenseCodesPath").as[OffenseCode]
+  val crimes = spark.read.option("header", "true").schema(crimesSchema).csv(s"$crimesPath")
+    .as[Crime].distinct
+  val offenseCodes = spark.read.option("header", "true").schema(offenseCodeSchema).csv(s"$offenseCodesPath")
+    .as[OffenseCode].distinct
 
 
   val fullDF = crimes.join(broadcast(offenseCodes), $"OFFENSE_CODE" === $"CODE")
-    .where($"DISTRICT".isNotNull)
 
-  val basicAgg = fullDF
+  val basicAgg = crimes
     .groupBy("DISTRICT")
     .agg(
       count("*").as("crimes_total"),
@@ -47,7 +48,7 @@ object BostonCrimesMap extends App {
     .groupBy($"DISTRICT")
     .agg(collect_list($"crime_type").as("frequent_crime_types"))
 
-  fullDF
+  crimes
     .groupBy("DISTRICT", "YEAR", "MONTH")
     .count()
     .createOrReplaceTempView("monthly_grouped")
@@ -76,7 +77,6 @@ object BostonCrimesMap extends App {
     .write
     .mode("overwrite")
     .parquet(outputPath)
-
 }
 
 case class Crime(
